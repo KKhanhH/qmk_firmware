@@ -104,6 +104,8 @@ void backlight_init_ports(void) {
 }
 
 void backlight_set(uint8_t level) {
+    breathing_pulse_flag = false;
+    chVTReset(&pulse_vt);
     if (level > BACKLIGHT_LEVELS) {
         level = BACKLIGHT_LEVELS;
     }

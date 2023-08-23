@@ -56,3 +56,89 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 		KC_TRNS, KC_TRNS, KC_TRNS, KC_TRNS, KC_TRNS, KC_TRNS, KC_TRNS, KC_TRNS, KC_TRNS, KC_TRNS,   KC_TRNS
     )
 };
+
+enum backlight_keycodes { BL_CHANGE_MODE = QK_KB_0, BL_BREATHING_PULSE};
+
+typedef enum BL_MODE { BL_MODE_OFF, BL_SOLID, BL_BREATHE, BL_REACTIVE, BL_MODE_COUNT} BL_MODE;
+
+typedef union {
+  uint32_t raw;
+  struct {
+    BL_MODE bl_mode;
+  };
+} keyboard_config_t;
+
+static keyboard_config_t keyboard_config;
+
+void keyboard_post_init_kb() {
+    keyboard_config.raw = eeconfig_read_kb();
+    if (keyboard_config.bl_mode < BL_MODE_OFF || keyboard_config.bl_mode > BL_REACTIVE ) {
+        keyboard_config.bl_mode = BL_SOLID;
+    }
+    eeconfig_update_kb(keyboard_config.raw);
+}
+
+static void change_bl_mode(enum BL_MODE bl_mode) {
+    switch (bl_mode) {
+        default:
+        case BL_MODE_OFF:
+            backlight_disable_breathing();
+            backlight_disable();
+            break;
+        case BL_SOLID:
+            backlight_enable();
+            backlight_disable_breathing();
+            break;
+
+        case BL_BREATHE:
+            backlight_enable();
+            backlight_enable_breathing();
+            break;
+
+        case BL_REACTIVE:
+            backlight_enable();
+            backlight_disable_breathing();
+            break;
+    }
+    keyboard_config.bl_mode = bl_mode;
+    eeconfig_update_kb(keyboard_config.raw);
+}
+
+bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    enum BL_MODE backlight_mode = keyboard_config.bl_mode;
+    static enum BL_MODE last_bl_mode = BL_SOLID;
+    switch (keycode) {
+        case BL_TOGG:
+            if(record->event.pressed) {
+                if(is_backlight_enabled()) {
+                    last_bl_mode = backlight_mode;
+                    change_bl_mode(BL_MODE_OFF);
+                } else {
+                    if(backlight_mode == BL_MODE_OFF) {
+                        last_bl_mode = BL_SOLID;
+                    }
+                    change_bl_mode(last_bl_mode);
+                }
+            }
+            return false;
+        case BL_CHANGE_MODE:
+            if (record->event.pressed) {
+                backlight_mode = (backlight_mode + 1) % BL_MODE_COUNT;
+                change_bl_mode(backlight_mode);
+            }
+            return false;
+        case BL_BREATHING_PULSE:
+            breathing_pulse();
+            return false;
+        default:
+            if (backlight_mode == BL_REACTIVE) {
+                if (record->event.pressed) {
+                    backlight_set(get_backlight_level());
+                }
+                else {
+                    breathing_pulse();
+                }
+            }
+            return true; // Process all other keycodes normally
+    }
+}
